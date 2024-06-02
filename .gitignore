@@ -1,0 +1,6 @@
+data
+model
+__pycache__
+network/__pycache__
+gradients_set
+logits_set
