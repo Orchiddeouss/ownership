@@ -90,7 +90,21 @@ IMAGENET_CLF_ROOT = {'source':'./model/clf/gradsign-imagenet-resnet34-imgnet.pt'
                 'logit-query':'./model/clf/gradsign-imagenet-resnet18-imgnet.pt',
                 'benign':'./model/clf/gradsign-imagenet-resnet34-imgnet.pt'}
 
+CIFAR10_CLF_ROOT_BLACK = {'source':'./model/clf/logitsign-cifar10-wrn28-10.pt',
+                'distillation':'./model/clf/logitsign-cifar10-wrn16-1.pt',
+                'zero-shot':'./model/clf/logitsign-cifar10-wrn16-1.pt',
+                'fine-tune':'./model/clf/logitsign-cifar10-wrn28-10.pt',
+                'label-query':'./model/clf/logitsign-cifar10-wrn16-1.pt',
+                'logit-query':'./model/clf/logitsign-cifar10-wrn16-1.pt',
+                'benign':'./model/clf/logitsign-cifar10-wrn28-10.pt'}
 
+IMAGENET_CLF_ROOT_BLACK = {'source':'./model/clf/logitsign-imagenet-resnet34-imgnet.pt',
+                'distillation':'./model/clf/logitsign-imagenet-resnet18-imgnet.pt',
+                'zero-shot':'./model/clf/logitsign-imagenet-resnet18-imgnet.pt',
+                'fine-tune':'./model/clf/logitsign-imagenet-resnet34-imgnet.pt',
+                'label-query':'./model/clf/logitsign-imagenet-resnet18-imgnet.pt',
+                'logit-query':'./model/clf/logitsign-imagenet-resnet18-imgnet.pt',
+                'benign':'./model/clf/logitsign-imagenet-resnet34-imgnet.pt'}
 
 
 def get_p_value(arrA, arrB):
@@ -172,6 +186,38 @@ def get_gradient_pair(sus_model, benign_model, device, args, optimizer_sus, opti
 
     return sus_g_list, benign_g_list
 
+def get_logits_pair(sus_model, benign_model, device, args, optimizer_sus, optimizer_benign):
+    sus_logits_list = []
+    benign_logits_list = []
+    sus_model.eval()
+    benign_model.eval()
+
+    for classid in range(args.num_classes):
+        f_path = args.data_f_path +'/train/'+ str(classid) + '/'
+        files = os.listdir(f_path)
+        classid = torch.from_numpy(np.array([classid])).long()
+        for file in files:
+            filename, filetype = os.path.splitext(file)
+            if filetype == '.jpeg' or filetype == '.jpg' or filetype == '.png' or filetype=='.JPEG':
+                img_f = torch.from_numpy(load_img(args.dataset, f_path+filename+filetype))
+                img_f = img_f.unsqueeze(0)
+                img_f = img_f.to(device)
+                classid = classid.to(device)
+
+                # Get logits of img_f from sus_model
+                with torch.no_grad():
+                    output_sus = sus_model(img_f)
+                sus_logits_list.append(output_sus.cpu().numpy())
+                
+                # Get logits of img_f from benign_model
+                with torch.no_grad():
+                    output_benign = benign_model(img_f)
+                benign_logits_list.append(output_benign.cpu().numpy())
+
+    sus_logits_list = np.concatenate(sus_logits_list, axis=0)
+    benign_logits_list = np.concatenate(benign_logits_list, axis=0)
+    return sus_logits_list, benign_logits_list
+
 def get_prob_pair(clf, sus_g_list, benign_g_list, device):
     prob_f = []
     prob_nf = []
@@ -207,92 +253,186 @@ if __name__ == '__main__':
     parser.add_argument('--weight_decay', type=float, default=5e-4)
     parser.add_argument('--lr', type=float, default=0.1, metavar='LR',
                         help='learning rate (default: 0.1)')
+    parser.add_argument('--black', action='store_true')
+    
     args = parser.parse_args()
+    if args.black:
+        if args.dataset == 'cifar10':
+            args.num_classes = 10
+            args.model = CIFAR10_MODEL[args.mode]
+            args.suspicious_model_type = CIFAR10_MODEL[args.mode]
+            args.suspicious_model_root = CIFAR10_MODEL_ROOT[args.mode]
+            args.benign_model_root = CIFAR10_BENIGN_MODEL[args.mode]
+            args.clf_root = CIFAR10_CLF_ROOT_BLACK[args.mode]
+            args.data_f_path = './data/cifar10_seurat_10%/'
+        elif args.dataset == 'imagenet':
+            args.num_classes = 20
+            args.model = IMAGENET_MODEL[args.mode]
+            args.suspicious_model_type = IMAGENET_MODEL[args.mode]
+            args.suspicious_model_root = IMAGENET_MODEL_ROOT[args.mode]
+            args.benign_model_root = IMAGENET_BENIGN_MODEL[args.mode]
+            args.clf_root = IMAGENET_CLF_ROOT_BLACK[args.mode]
+            args.data_f_path = './data/subimage_seurat_10%/'
+        else:
+            raise('no such dataset')
 
-    if args.dataset == 'cifar10':
-        args.num_classes = 10
-        args.model = CIFAR10_MODEL[args.mode]
-        args.suspicious_model_type = CIFAR10_MODEL[args.mode]
-        args.suspicious_model_root = CIFAR10_MODEL_ROOT[args.mode]
-        args.benign_model_root = CIFAR10_BENIGN_MODEL[args.mode]
-        args.clf_root = CIFAR10_CLF_ROOT[args.mode]
-        args.data_f_path = './data/cifar10_seurat_10%/'
-    elif args.dataset == 'imagenet':
-        args.num_classes = 20
-        args.model = IMAGENET_MODEL[args.mode]
-        args.suspicious_model_type = IMAGENET_MODEL[args.mode]
-        args.suspicious_model_root = IMAGENET_MODEL_ROOT[args.mode]
-        args.benign_model_root = IMAGENET_BENIGN_MODEL[args.mode]
-        args.clf_root = IMAGENET_CLF_ROOT[args.mode]
-        args.data_f_path = './data/subimage_seurat_10%/'
+        print(args)
+
+        if args.gpu != -1:
+            torch.cuda.set_device(args.gpu)
+        device = 'cuda' if args.gpu != -1 else 'cpu'
+
+        random.seed(args.seed)
+        starttime = time.time()
+
+        # load suspicious model
+        print('load suspicious model')
+        sus_model = get_model(args)
+
+        if device == 'cpu':
+            sus_model.load_state_dict(torch.load(args.suspicious_model_root, map_location=torch.device('cpu')))
+        else:
+            sus_model.load_state_dict(torch.load(args.suspicious_model_root))
+        sus_model.to(device)
+
+        # load benign model
+        print('load benign model')
+        benign_model = get_model(args)
+
+        if device == 'cpu':
+            benign_model.load_state_dict(torch.load(args.benign_model_root, map_location=torch.device('cpu')))
+        else:
+            benign_model.load_state_dict(torch.load(args.benign_model_root))
+        benign_model.to(device)
+
+        # get output of suspicious (logit)
+        print('get logit from suspicious and benign model')
+        optimizer_sus = optim.SGD(sus_model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
+        optimizer_benign = optim.SGD(benign_model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+                                momentum=args.momentum)
+        sus_g, benign_g = get_logits_pair(sus_model, benign_model,device, args, optimizer_sus, optimizer_benign)
+
+
+        # load meta-classifier
+        if args.clf_model == 'mlp':
+            if args.dataset == 'cifar10':
+                clf = network.MLP3(len(sus_g[0]), 2)
+            elif args.dataset == 'imagenet':
+                clf = network.MLP(len(sus_g[0]), 2)
+            if device == 'cpu':
+                clf.load_state_dict(torch.load(args.clf_root, map_location=torch.device('cpu')))
+            else:
+                clf.load_state_dict(torch.load(args.clf_root))
+            clf = clf.to(device)
+            print(clf)
+            clf.eval()
+
+        # get probability from clf
+        print('get probability from clf')
+        prob_f, prob_nf = get_prob_pair(clf, sus_g, benign_g, device)
+        model_name = args.suspicious_model_root.split('/')[3]
+        model_name = model_name.split('.')[0]
+
+
+        # T-test, get p-val
+        prob_f = np.array(prob_f)
+        prob_nf = np.array(prob_nf)
+
+        #seed_start = 0
+        seed = 100
+        m = 10
+
+
+        p_list, mu_list = mult_test(prob_f[:, 1], prob_nf[:, 1], seed=seed, m=m, mult_num=40)
+        print('result:  p-val: {} mu: {}'.format(hmean(p_list), np.mean(mu_list)))
+
+        print('Time cost: {} sec'.format(round(time.time() - starttime, 2)))
+
     else:
-        raise('no such dataset')
+        if args.dataset == 'cifar10':
+            args.num_classes = 10
+            args.model = CIFAR10_MODEL[args.mode]
+            args.suspicious_model_type = CIFAR10_MODEL[args.mode]
+            args.suspicious_model_root = CIFAR10_MODEL_ROOT[args.mode]
+            args.benign_model_root = CIFAR10_BENIGN_MODEL[args.mode]
+            args.clf_root = CIFAR10_CLF_ROOT[args.mode]
+            args.data_f_path = './data/cifar10_seurat_10%/'
+        elif args.dataset == 'imagenet':
+            args.num_classes = 20
+            args.model = IMAGENET_MODEL[args.mode]
+            args.suspicious_model_type = IMAGENET_MODEL[args.mode]
+            args.suspicious_model_root = IMAGENET_MODEL_ROOT[args.mode]
+            args.benign_model_root = IMAGENET_BENIGN_MODEL[args.mode]
+            args.clf_root = IMAGENET_CLF_ROOT[args.mode]
+            args.data_f_path = './data/subimage_seurat_10%/'
+        else:
+            raise('no such dataset')
 
-    print(args)
+        print(args)
 
-    if args.gpu != -1:
-        torch.cuda.set_device(args.gpu)
-    device = 'cuda' if args.gpu != -1 else 'cpu'
+        if args.gpu != -1:
+            torch.cuda.set_device(args.gpu)
+        device = 'cuda' if args.gpu != -1 else 'cpu'
 
-    random.seed(args.seed)
-    starttime = time.time()
+        random.seed(args.seed)
+        starttime = time.time()
 
-    # load suspicious model
-    print('load suspicious model')
-    sus_model = get_model(args)
+        # load suspicious model
+        print('load suspicious model')
+        sus_model = get_model(args)
 
-    if device == 'cpu':
-        sus_model.load_state_dict(torch.load(args.suspicious_model_root, map_location=torch.device('cpu')))
-    else:
-        sus_model.load_state_dict(torch.load(args.suspicious_model_root))
-    sus_model.to(device)
+        if device == 'cpu':
+            sus_model.load_state_dict(torch.load(args.suspicious_model_root, map_location=torch.device('cpu')))
+        else:
+            sus_model.load_state_dict(torch.load(args.suspicious_model_root))
+        sus_model.to(device)
 
-    # load benign model
-    print('load benign model')
-    benign_model = get_model(args)
+        # load benign model
+        print('load benign model')
+        benign_model = get_model(args)
 
-    if device == 'cpu':
-        benign_model.load_state_dict(torch.load(args.benign_model_root, map_location=torch.device('cpu')))
-    else:
-        benign_model.load_state_dict(torch.load(args.benign_model_root))
-    benign_model.to(device)
+        if device == 'cpu':
+            benign_model.load_state_dict(torch.load(args.benign_model_root, map_location=torch.device('cpu')))
+        else:
+            benign_model.load_state_dict(torch.load(args.benign_model_root))
+        benign_model.to(device)
 
-    # get output of suspicious (gradients or vd)
-    print('get gradient from suspicious and benign model')
-    optimizer_sus = optim.SGD(sus_model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
-    optimizer_benign = optim.SGD(benign_model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
-                               momentum=args.momentum)
-    sus_g, benign_g = get_gradient_pair(sus_model, benign_model,device, args, optimizer_sus, optimizer_benign)
-
-
-    # load meta-classifier
-    if args.clf_model == 'mlp':
-       clf = network.MLP(len(sus_g[0]), 2)
-       if device == 'cpu':
-           clf.load_state_dict(torch.load(args.clf_root, map_location=torch.device('cpu')))
-       else:
-           clf.load_state_dict(torch.load(args.clf_root))
-       clf = clf.to(device)
-       print(clf)
-       clf.eval()
-
-    # get probability from clf
-    print('get probability from clf')
-    prob_f, prob_nf = get_prob_pair(clf, sus_g, benign_g, device)
-    model_name = args.suspicious_model_root.split('/')[3]
-    model_name = model_name.split('.')[0]
-
-
-    # T-test, get p-val
-    prob_f = np.array(prob_f)
-    prob_nf = np.array(prob_nf)
-
-    #seed_start = 0
-    seed = 100
-    m = 10
+        # get output of suspicious (gradients or vd)
+        print('get gradient from suspicious and benign model')
+        optimizer_sus = optim.SGD(sus_model.parameters(), lr=args.lr, weight_decay=args.weight_decay, momentum=args.momentum)
+        optimizer_benign = optim.SGD(benign_model.parameters(), lr=args.lr, weight_decay=args.weight_decay,
+                                momentum=args.momentum)
+        sus_g, benign_g = get_gradient_pair(sus_model, benign_model,device, args, optimizer_sus, optimizer_benign)
 
 
-    p_list, mu_list = mult_test(prob_f[:, 1], prob_nf[:, 1], seed=seed, m=m, mult_num=40)
-    print('result:  p-val: {} mu: {}'.format(hmean(p_list), np.mean(mu_list)))
+        # load meta-classifier
+        if args.clf_model == 'mlp':
+            clf = network.MLP(len(sus_g[0]), 2)
+            if device == 'cpu':
+                clf.load_state_dict(torch.load(args.clf_root, map_location=torch.device('cpu')))
+            else:
+                clf.load_state_dict(torch.load(args.clf_root))
+            clf = clf.to(device)
+            print(clf)
+            clf.eval()
 
-    print('Time cost: {} sec'.format(round(time.time() - starttime, 2)))
+        # get probability from clf
+        print('get probability from clf')
+        prob_f, prob_nf = get_prob_pair(clf, sus_g, benign_g, device)
+        model_name = args.suspicious_model_root.split('/')[3]
+        model_name = model_name.split('.')[0]
+
+
+        # T-test, get p-val
+        prob_f = np.array(prob_f)
+        prob_nf = np.array(prob_nf)
+
+        #seed_start = 0
+        seed = 100
+        m = 10
+
+
+        p_list, mu_list = mult_test(prob_f[:, 1], prob_nf[:, 1], seed=seed, m=m, mult_num=40)
+        print('result:  p-val: {} mu: {}'.format(hmean(p_list), np.mean(mu_list)))
+
+        print('Time cost: {} sec'.format(round(time.time() - starttime, 2)))

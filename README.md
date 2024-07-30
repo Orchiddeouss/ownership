@@ -99,10 +99,27 @@ python train_clf.py --type=resnet34-imgnet --dataset=imagenet --black
 ## 所有权验证
 
 ### 白盒验证场景
-CIFAR-10:
 
+CIFAR-10:
+```
 python ownership_verification.py --mode=source --dataset=cifar10 --gpu=0 
-python ownership_verification.py --mode=distillation --dataset=cifar10 --gpu=0
+```
+
+ImageNet:
+```
+python ownership_verification.py --mode=logit-query --dataset=imagenet --gpu=0 
+```
+### 黑盒验证场景
+
+CIFAR-10:
+```
+python ownership_verification.py --mode=source --dataset=cifar10 --gpu=0 --black
+```
+
+ImageNet:
+```
+python ownership_verification.py --mode=logit-query --dataset=imagenet --gpu=0 --black
+```
 
 #mode: ['source','distillation','zero-shot','fine-tune','label-query','logit-query','benign']
 

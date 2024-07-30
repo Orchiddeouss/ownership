@@ -81,10 +81,10 @@ if __name__ == '__main__':
             torch.cuda.set_device(args.gpu)
         device = 'cuda' if args.gpu != -1 else 'cpu'
 
-        print('load gradients of victim and benign')
-        # sign vector of gradients of victim model
+        print('load logits of victim and benign')
+        # sign vector of logits of victim model
         vict_g = np.sign(np.load(args.v_g_f_path))
-        # sign vector of gradients of benign model
+        # sign vector of logits of benign model
         benign_g = np.sign(np.load(args.i_g_f_path))  
 
         # split train & test set for training clf
@@ -97,7 +97,10 @@ if __name__ == '__main__':
 
         # train binary classifier with (benign_g, 0) and (vict_g, 1)
         print('train meta-classifier with sign vector of gradients')
-        clf = mlp.MLP(len(gradients_trainset[0]), 2)
+        if args.dataset == 'cifar10':
+            clf = mlp.MLP3(len(gradients_trainset[0]), 2)
+        elif args.dataset == 'imagenet':
+            clf = mlp.MLP(len(gradients_trainset[0]), 2)
         clf = clf.to(device)
         print(clf)
 
@@ -107,7 +110,7 @@ if __name__ == '__main__':
         for epoch in range(args.mlp_epoch):
             mlp.train(clf, gradients_trainset, gradients_trainlabel, epoch, optimizer, device)
             acc = mlp.test(clf, gradients_testset, gradients_testlabel, device, epoch)
-            best_mlp_path = "model/clf/gradsign-%s-%s.pt" % (args.dataset, args.model_type)
+            best_mlp_path = "model/clf/logitsign-%s-%s.pt" % (args.dataset, args.model_type)
             if acc > best_acc:
                 best_acc = acc
                 torch.save(clf.state_dict(), best_mlp_path)
