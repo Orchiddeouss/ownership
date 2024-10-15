@@ -18,7 +18,7 @@ logitset.py : collect model output vectors in black-box scenario
 
 ### White-box verification scenario
 
-CIFAR-10 Dataset
+CIFAR-10 Dataset:
 
 Collect gradient features of the victim model
 ```
@@ -105,12 +105,12 @@ python ownership_verification.py --mode=logit-query --dataset=imagenet --gpu=0
 ```
 ### Black-box scenario
 
-CIFAR-10:
+CIFAR-10 Dataset:
 ```
 python ownership_verification.py --mode=source --dataset=cifar10 --gpu=0 --black
 ```
 
-ImageNet:
+ImageNet Dataset:
 ```
 python ownership_verification.py --mode=logit-query --dataset=imagenet --gpu=0 --black
 ```
