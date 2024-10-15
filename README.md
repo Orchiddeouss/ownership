@@ -1,4 +1,4 @@
-## 环境安装 使用conda 
+## Environmental setup using conda 
 
 ```
 conda create --name py311 python=3.11
@@ -8,108 +8,102 @@ conda install numpy scikit-learn
 pip install opencv-python matplotlib
 ```
 
-解释下每个用得上的脚本的功能，没有解释的是在其他脚本中调用的
+train_model.py : train victim model
 
-train_model.py : 训练受害者模型
+data_enhance.py : dataset enhance
 
-data_enhance.py : 数据集增强
+gradientset.py : collect model gradients in white-box scenario 
 
-gradientset.py : 白盒场景下收集模型梯度数据
+logitset.py : collect model output vectors in black-box scenario
 
-logitset.py : 黑盒场景下收集模型输出向量
+### White-box verification scenario
 
-## 所有权验证器数据集生成
+CIFAR-10 Dataset
 
-收集受害者模型和良性模型的特征，作为所有权验证器的数据集
-
-### 白盒验证场景
-
-CIFAR-10 数据集
-
-收集受害者模型梯度特征
+Collect gradient features of the victim model
 ```
 python gradientset.py --model=wrn28-10 -m=./model/victim/vict-wrn28-10.pt --dataset=cifar10
 ```
-收集良性模型梯度特征
+Collect gradient features of the benign model
 ```
 python gradientset.py --model=wrn28-10 -m=./model/benign/benign-wrn28-10.pt --dataset=cifar10
 ```
 
-ImageNet 数据集:
+ImageNet Dataset:
 
-收集受害者模型梯度特征
+Collect gradient features of the victim model
 ```
 python gradientset.py --model=resnet34-imgnet -m=./model/victim/vict-imgnet-resnet34.pt --dataset=imagenet
 ```
-收集良性模型梯度特征
+Collect gradient features of the benign model
 ```
 python gradientset.py --model=resnet34-imgnet -m=./model/benign/benign-imgnet-resnet34.pt --dataset=imagenet
 ```
 
-### 黑盒验证场景
+### Black-box verification scenario
 
-CIFAR-10 数据集:
+CIFAR-10 Dataset:
 
-收集受害者模型输出向量特征
+Collect output vector features of the victim model
 ```
 python logitset.py --model=wrn28-10 -m=./model/victim/vict-wrn28-10.pt --dataset=cifar10
 ```
-收集良性模型输出向量特征
+Collect output vector features of the benign model
 ```
 python logitset.py --model=wrn28-10 -m=./model/benign/benign-wrn28-10.pt --dataset=cifar10
 ```
 
-ImageNet 数据集:
+ImageNet Dataset:
 
-收集受害者模型输出向量特征
+Collect output vector features of the victim model
 ```
 python logitset.py --model=resnet34-imgnet -m=./model/victim/vict-imgnet-resnet34.pt --dataset=imagenet
 ```
-收集良性模型输出向量特征
+Collect output vector features of the benign model
 ```
 python logitset.py --model=resnet34-imgnet -m=./model/benign/benign-imgnet-resnet34.pt --dataset=imagenet
 ```
 
-## 训练所有权验证器
+## Train the ownership validator
 
-### 白盒验证场景
+### White-box scenario
 
-CIFAR-10数据集:
+CIFAR-10 Dataset:
 ```
 python train_clf.py --type=wrn28-10 --dataset=cifar10
 ```
 
-ImageNet数据集:
+ImageNet Dataset:
 ```
 python train_clf.py --type=resnet34-imgnet --dataset=imagenet
 ```
 
-### 黑盒验证场景
+### Black-box scenario
 
-CIFAR-10数据集:
+CIFAR-10 Dataset:
 ```
 python train_clf.py --type=wrn28-10 --dataset=cifar10 --black
 ```
 
-ImageNet数据集:
+ImageNet Dataset:
 ```
 python train_clf.py --type=resnet34-imgnet --dataset=imagenet --black
 ```
 
-## 所有权验证
+## Ownership Verification
 
-### 白盒验证场景
+### White-box scenario
 
-CIFAR-10:
+CIFAR-10 Dataset:
 ```
 python ownership_verification.py --mode=source --dataset=cifar10 --gpu=0 
 ```
 
-ImageNet:
+ImageNet Dataset:
 ```
 python ownership_verification.py --mode=logit-query --dataset=imagenet --gpu=0 
 ```
-### 黑盒验证场景
+### Black-box scenario
 
 CIFAR-10:
 ```
